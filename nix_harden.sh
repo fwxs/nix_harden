@@ -11,12 +11,25 @@ function is_root()
 
 function harden_kernel_stack()
 {
+    sysctl_file="/etc/sysctl.conf"
+
+    if ! [ -e $sysctl_file ]; then
+        sysctl_file="/etc/sysctl.d/nix_harden.conf"
+        touch $sysctl_file
+        ln -sf $sysctl_file "/etc/sysctl.conf"
+    fi
+
+    echo "[*] Saving configuration in $sysctl_file"
+
+    echo "[*] Enabling Virtual address randomization."
+    echo "kernel.randomize_va_space = 2" > $sysctl_file
 
     echo "[*] Enabling TCP SYN Cookie protection."
-    sysctl -q net.ipv4.tcp_syncookies=1
+    echo "net.ipv4.tcp_syncookies = 1" >> $sysctl_file
+    echo "net.ipv4.tcp_synack_retries = 5" >> $sysctl_file
 
     echo "[*] Enabling TCP RFC 1337."
-    sysctl -q net.ipv4.tcp_rfc1337=1
+    echo "net.ipv4.tcp_rfc1337 = 1" >> $sysctl_file
 
     # Uncomment this if you want, the script will use (ip/nf)tables instead.
     #echo "[*] Enabling Reverse path filtering."
@@ -29,25 +42,25 @@ function harden_kernel_stack()
     case $q in
         y|Y)
             echo "[*] Enabling log martian packets."
-            sysctl -q net.ipv4.conf.default.log_martians=1
-            sysctl -q net.ipv4.conf.all.log_martians=1
+            echo "net.ipv4.conf.default.log_martians = 1" >> $sysctl_file
+            echo "net.ipv4.conf.all.log_martians = 1" >> $sysctl_file
             ;;
         n|N)
             ;;
     esac
 
     echo "[*] Disabling ICMP redirection."
-    sysctl -q net.ipv4.conf.all.accept_redirects=0
-    sysctl -q net.ipv4.conf.default.accept_redirects=0
-    sysctl -q net.ipv4.conf.all.secure_redirects=0
-    sysctl -q net.ipv4.conf.default.secure_redirects=0
-    sysctl -q net.ipv4.conf.default.accept_source_route=0
-    sysctl -q net.ipv6.conf.all.accept_redirects=0
-    sysctl -q net.ipv6.conf.default.accept_redirects=0
+    echo "net.ipv4.conf.all.accept_redirects = 0" >>$sysctl_file
+    echo "net.ipv4.conf.default.accept_redirects = 0" >>$sysctl_file
+    echo "net.ipv4.conf.all.secure_redirects = 0" >>$sysctl_file
+    echo "net.ipv4.conf.default.secure_redirects = 0" >>$sysctl_file
+    echo "net.ipv4.conf.default.accept_source_route = 0" >>$sysctl_file
+    echo "net.ipv6.conf.all.accept_redirects = 0" >>$sysctl_file
+    echo "net.ipv6.conf.default.accept_redirects = 0" >>$sysctl_file
 
     # Disabling redirection on a non router.
-    sysctl -q net.ipv4.conf.all.send_redirects=0
-    sysctl -q net.ipv4.conf.default.send_redirects=0
+    echo "net.ipv4.conf.all.send_redirects = 0" >>$sysctl_file
+    echo "net.ipv4.conf.default.send_redirects = 0" >>$sysctl_file
 
     echo "[!] Do you want to ignore ICMP requests? [y/n]"
     read q
@@ -55,23 +68,47 @@ function harden_kernel_stack()
     case $q in
         y|Y)
             echo "[*] Ignoring ICMP requests, at the kernel level."
-            sysctl -q net.ipv4.icmp_echo_ignore_all=1
+            echo "net.ipv4.icmp_echo_ignore_all = 1" >>$sysctl_file
             ;;
         n|N)
             ;;
     esac
 
+    # Thanks to https://www.cyberciti.biz/faq/linux-kernel-etcsysctl-conf-security-hardening/
+    echo "[*] Limit number of Router Solicitations to send until assuming no routers are present."
+    echo "net.ipv6.conf.default.router_solicitations = 0" >>$sysctl_file
+    
+    echo "[*] Reject Router Preference in Router advertisement"
+    echo "net.ipv6.conf.default.accept_ra_rtr_pref = 0" >>$sysctl_file
+    
+    echo "[*] Learn Prefix Information in Router Advertisement"
+    echo "net.ipv6.conf.default.accept_ra_pinfo = 0" >>$sysctl_file
+    
+    echo "[*] Reject hop limits from router advertisement"
+    echo "net.ipv6.conf.default.accept_ra_defrtr = 0" >>$sysctl_file
+    
+    echo "[*] Disabling global unicast address to interfaces"
+    echo "net.ipv6.conf.default.autoconf = 0" >>$sysctl_file
+    
+    echo "[*] Don't send neighbor solicitations packets"
+    echo "net.ipv6.conf.default.dad_transmits = 0" >>$sysctl_file
+    
+    echo "[*] Setting 1 global unicast IPv6 address on each interface"
+    echo "net.ipv6.conf.default.max_addresses = 1" >>$sysctl_file
+
     echo "[*] Disabling sysrq"
-    sysctl -q kernel.sysrq=0
+    echo "kernel.sysrq = 0" >>$sysctl_file
 
     echo "[*] Restricting access to kernel logs"
-    sysctl -q kernel.dmesg_restrict=1
+    echo "kernel.dmesg_restrict = 1" >>$sysctl_file
 
     echo "[*] Restricting access to kernel pointers"
-    sysctl -q kernel.kptr_restrict=1
+    echo "kernel.kptr_restrict = 1" >>$sysctl_file
 
     echo "[*] Disabling kernel.unprivileged_userns_clone"
-    sysctl -q kernel.unprivileged_userns_clone=0
+    echo "kernel.unprivileged_userns_clone = 0" >>$sysctl_file
+
+    sysctl -q -p $sysctl_file
 }
 
 function check_if_iface_exists()
@@ -259,6 +296,18 @@ function harden_file_permissions()
         fi
     fi
 
+    echo "[*] Binding /tmp mount with /var/tmp"
+    echo -ne "# /tmp -> /var/tmp\n" >> /etc/fstab
+    echo -ne "/tmp\t/var/tmp\tnone\trw,nodev,nosuid,noexec,bind\t0 0" >> /etc/fstab
+
+    is_shm_sec=$(grep --only-matching -E "tmpfs\s{1,}/dev/shm\s{1,}tmpfs\s{1,}rw,nosuid,noexec" /etc/fstab)
+
+    if [ $is_shm_sec != 0 ]; then
+        echo "[*] Securing /dev/shm."
+        echo -ne "#/dev/shm" >> /etc/fstab
+        echo -ne "tmpfs\t/dev/shm\ttmpfs\trw,nosuid,noexec,nodev\t0 0" >> /etc/fstab
+    fi
+    
     echo "[*] Setting the inmutable flag on '/etc/resolv.conf'"
     chattr +i /etc/resolv.conf
     chattr +i /etc/resolv.conf.bak
@@ -278,6 +327,12 @@ function harden_file_permissions()
     echo "[*] Restricting /etc/ssh rw access"
     chmod 400 /etc/ssh
     chmod u=rw /etc/ssh/*
+
+    # Thanks to trimstray, practical linux hardening guide
+    # https://github.com/trimstray
+    echo "[*] Protecting grub bootloader config files"
+    chown -R root:root /etc/grub.d
+    chmod og-rwx -R /etc/grub.d
 }
 
 function secure_sshd()
@@ -363,16 +418,6 @@ function restrict_services()
         y|Y)
             echo "[*] Masking rpcbind service."
             systemctl mask rpcbind.service
-            ;;
-        *)
-        ;;
-    esac
-
-    echo "[!] Mask rpcbind.socket? [y/n]: "
-    read q
-    case $q in
-        y|Y)
-            echo "[*] Masking rpcbind socket."
             systemctl mask rpcbind.socket
             ;;
         *)
@@ -384,26 +429,14 @@ function restrict_services()
     case $q in
         y|Y)
             echo "[*] Masking ssh service."
+            systemctl mask sshd.socket
             systemctl mask sshd.service
             ;;
         n|N)
             secure_sshd
             ;;
         *)
-            echo "[!] Select a valid option."
             ;;
-    esac
-
-    echo "[!] Mask sshd.socket? [y/n]: "
-    read q
-    case $q in
-        y|Y)
-            echo "[*] Masking ssh socket."
-            systemctl mask sshd.socket
-            systemctl mask sshd.service
-            ;;
-        *)
-        ;;
     esac
 
     echo "[!] Mask talk service? [y/n]: "
@@ -412,6 +445,7 @@ function restrict_services()
         y|Y)
             echo "[*] Masking talk service."
             systemctl mask ralk.service
+            systemctl mask talk.socket
             ;;
         *)
         ;;
@@ -439,34 +473,13 @@ function restrict_services()
         ;;
     esac
 
-    echo "[!] Mask talk.socket? [y/n]: "
-    read q
-    case $q in
-        y|Y)
-            echo "[*] Masking talk socket."
-            systemctl mask talk.socket
-            ;;
-        *)
-        ;;
-    esac
-
-    echo "[!] Mask telnet.socket? [y/n]: "
-    read q
-    case $q in
-        y|Y)
-            echo "[*] Masking telnet socket."
-            systemctl mask telnet.socket
-            ;;
-        *)
-        ;;
-    esac
-
     echo "[!] Mask telnet.service? [y/n]: "
     read q
     case $q in
         y|Y)
             echo "[*] Masking telnet service."
             systemctl mask telnet.service
+            systemctl mask telnet.socket
             ;;
         *)
         ;;
