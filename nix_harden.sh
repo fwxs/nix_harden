@@ -302,7 +302,7 @@ function harden_file_permissions()
 
     is_shm_sec=$(grep --only-matching -E "tmpfs\s{1,}/dev/shm\s{1,}tmpfs\s{1,}rw,nosuid,noexec" /etc/fstab)
 
-    if [ $is_shm_sec != 0 ]; then
+    if [[ $is_shm_sec != 0 ]]; then
         echo "[*] Securing /dev/shm."
         echo -ne "#/dev/shm" >> /etc/fstab
         echo -ne "tmpfs\t/dev/shm\ttmpfs\trw,nosuid,noexec,nodev\t0 0" >> /etc/fstab
@@ -359,10 +359,10 @@ function secure_sshd()
     iptables -N IN_SSH
     iptables -R TCP 2 -p tcp --dport $ssh_port -m conntrack --ctstate NEW -j IN_SSH
     iptables -A IN_SSH -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --set --name DEFAULT --rsource
-    iptables -I TCP 3 -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 90 --hitcount 3 --name DEFAULT --rsource -j IN_SSH
-    iptables -I TCP 4 -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 900 --hitcount 4 --name DEFAULT --rsource -j IN_SSH
-    iptables -I TCP 5 -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 9000 --hitcount 5 --name DEFAULT --rsource -j IN_SSH
-    iptables -I TCP 6 -p tcp -m tcp --dport $ssh_port -j ACCEPT
+    iptables -A IN_SSH -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 90 --hitcount 3 --name DEFAULT --rsource -j IN_SSH
+    iptables -A IN_SSH -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 900 --hitcount 4 --name DEFAULT --rsource -j IN_SSH
+    iptables -A IN_SSH -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 9000 --hitcount 5 --name DEFAULT --rsource -j IN_SSH
+    iptables -A IN_SSH -p tcp -m tcp --dport $ssh_port -j ACCEPT
     iptables -A IN_SSH -j LOG --log-prefix "[SSH BRUTEFORCING]" --log-level 7 --log-tcp-options --log-ip-options
     iptables -A IN_SSH -j DROP
     echo "[*] Saving rules"
@@ -372,10 +372,10 @@ function secure_sshd()
     ip6tables -N IN_SSH
     ip6tables -R TCP 2 -p tcp --dport $ssh_port -m conntrack --ctstate NEW -j IN_SSH
     ip6tables -A IN_SSH -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --set --name DEFAULT --rsource
-    ip6tables -I TCP 3 -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 90 --hitcount 3 --name DEFAULT --rsource -j IN_SSH
-    ip6tables -I TCP 4 -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 900 --hitcount 4 --name DEFAULT --rsource -j IN_SSH
-    ip6tables -I TCP 5 -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 9000 --hitcount 5 --name DEFAULT --rsource -j IN_SSH
-    ip6tables -I TCP 6 -p tcp -m tcp --dport $ssh_port -j ACCEPT
+    ip6tables -A IN_SSH -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 90 --hitcount 3 --name DEFAULT --rsource -j IN_SSH
+    ip6tables -A IN_SSH -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 900 --hitcount 4 --name DEFAULT --rsource -j IN_SSH
+    ip6tables -A IN_SSH -p tcp -m tcp --dport $ssh_port -m state --state NEW -m recent --update --seconds 9000 --hitcount 5 --name DEFAULT --rsource -j IN_SSH
+    ip6tables -A IN_SSH -p tcp -m tcp --dport $ssh_port -j ACCEPT
     ip6tables -A IN_SSH -j LOG --log-prefix "[SSH BRUTEFORCING]" --log-level 7 --log-tcp-options --log-ip-options
     ip6tables -A IN_SSH -j DROP
 
@@ -488,6 +488,9 @@ function restrict_services()
 
 echo "[*] Checking if you have superuser permissions."
 is_root
+
+echo "[*] Locking root."
+passwd -l root
 
 # Based on https://wiki.archlinux.org/index.php/Security#Kernel_hardening
 echo "[*] Hardening TCP/IP stack."
