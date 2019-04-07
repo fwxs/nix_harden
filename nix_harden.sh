@@ -36,7 +36,7 @@ function harden_kernel_stack
     #sysctl -q net.ipv4.conf.default.rp_filter=1
     #sysctl -q net.ipv4.conf.all.rp_filter=1
 
-    echo -n "[!] Do you want to log martian packets? [y/n]"
+    echo -n "[!] Do you want to log martian packets? [y/n] "
     read question
 
     case $question in
@@ -62,7 +62,7 @@ function harden_kernel_stack
     echo "net.ipv4.conf.all.send_redirects = 0" >>$sysctl_file
     echo "net.ipv4.conf.default.send_redirects = 0" >>$sysctl_file
 
-    echo -n "[!] Do you want to ignore ICMP requests? [y/n]"
+    echo -n "[!] Do you want to ignore ICMP requests? [y/n] "
     read question
 
     case $question in
@@ -192,14 +192,14 @@ function set_iptables_fw
 {
     IFACE_OPT=""
 
-    echo "[!] Set iptables rules on all interfaces? [y/n]: "
+    echo -n "[!] Set iptables rules on all interfaces? [y/n]: "
     read question
 
     case $question in
         y|Y)
             ;;
-        n|Y)
-            echo "[*] Specify the interface: "
+        n|N)
+            echo -n "[*] Specify the interface: "
             read IFACE_OPT
 
             check_if_iface_exists $IFACE_OPT
@@ -275,7 +275,7 @@ function set_iptables_fw
     systemctl start iptables.service
     systemctl enable iptables.service
 
-    set_ip6tables_fw $IFACE_OPT
+    set_ip6tables_fw "$IFACE_OPT"
 }
 
 function harden_xorg
@@ -303,10 +303,10 @@ function harden_xorg
 
 function harden_file_permissions
 {
-    echo -ne "\n[*] Hardening file permissions."
-    is_proc_mounted=$(grep --only-matching "nosuid,nodev,noexec,hidepid=2,gid=proc" /etc/fstab)
+    echo "[*] Hardening file permissions."
+    is_proc_mounted=$(grep -E "proc\s{1,}(nosuid,nodev,noexec,hidepid=2,gid=proc)" /etc/fstab)
 
-    if [ $is_proc_mounted != 0 ]; then
+    if [[ ! $is_proc_mounted ]]; then
         echo "[*] Registering procfs with 'nosuid,nodev,noexec,hidepid=2,gid=proc' options"
         echo -ne "#/proc\nproc\t/proc\tnosuid,nodev,noexec,hidepid=2,gid=proc\t0\t0\n" >> /etc/fstab
 
@@ -319,16 +319,19 @@ function harden_file_permissions
         fi
     fi
 
-    echo "[*] Binding /tmp mount with /var/tmp"
-    echo -ne "# /tmp -> /var/tmp\n" >> /etc/fstab
-    echo -ne "/tmp\t/var/tmp\tnone\trw,nodev,nosuid,noexec,bind\t0 0" >> /etc/fstab
+
+    if [[ ! $(grep -E "/var/tmp\s{1,}none\s{1,}rw,nodev,nosuid,noexec,bind" /etc/fstab) ]]; then
+	    echo "[*] Binding /tmp mount with /var/tmp"	
+	    echo -ne "n# /tmp -> /var/tmp\n" >> /etc/fstab
+	    echo -ne "/tmp\t/var/tmp\tnone\trw,nodev,nosuid,noexec,bind\t0 0\n" >> /etc/fstab;
+    fi
 
     is_shm_sec=$(grep --only-matching -E "tmpfs\s{1,}/dev/shm\s{1,}tmpfs\s{1,}rw,nosuid,noexec" /etc/fstab)
 
-    if [[ $is_shm_sec != 0 ]]; then
+    if [[ ! $is_shm_sec ]]; then
         echo "[*] Securing /dev/shm."
-        echo -ne "#/dev/shm" >> /etc/fstab
-        echo -ne "tmpfs\t/dev/shm\ttmpfs\trw,nosuid,noexec,nodev\t0 0" >> /etc/fstab
+        echo -ne "#/dev/shm\n" >> /etc/fstab
+        echo -ne "tmpfs\t/dev/shm\ttmpfs\trw,nosuid,noexec,nodev\t0 0\n" >> /etc/fstab
     fi
     
     echo "[*] Setting the inmutable flag on '/etc/resolv.conf'"
@@ -363,7 +366,7 @@ function harden_file_permissions
 function secure_sshd
 {
     echo "[*] Setting sshd protocol version 2"
-    sed --quiet s'/Protocol \d/Protocol 2/' /etc/ssh/sshd_config
+    sed --quiet s'/^Protocol \d/Protocol 2/' /etc/ssh/sshd_config
 
     echo "[*] Disabling ssh root login"
     sed --quiet s'/^PermitRootLogin [a-z]*/PermitRootLogin no/' /etc/ssh/sshd_config
