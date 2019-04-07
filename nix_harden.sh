@@ -1,6 +1,6 @@
 #!/bin/bash
 
-function is_root()
+function is_root
 {
     if [ $(id -u) != 0 ]; then
         echo "You need to run this script as root."
@@ -9,7 +9,7 @@ function is_root()
 
 }
 
-function harden_kernel_stack()
+function harden_kernel_stack
 {
     sysctl_file="/etc/sysctl.conf"
 
@@ -36,10 +36,10 @@ function harden_kernel_stack()
     #sysctl -q net.ipv4.conf.default.rp_filter=1
     #sysctl -q net.ipv4.conf.all.rp_filter=1
 
-    echo "[!] Do you want to log martian packets? [y/n]"
-    read q
+    echo -n "[!] Do you want to log martian packets? [y/n]"
+    read question
 
-    case $q in
+    case $question in
         y|Y)
             echo "[*] Enabling log martian packets."
             echo "net.ipv4.conf.default.log_martians = 1" >> $sysctl_file
@@ -62,10 +62,10 @@ function harden_kernel_stack()
     echo "net.ipv4.conf.all.send_redirects = 0" >>$sysctl_file
     echo "net.ipv4.conf.default.send_redirects = 0" >>$sysctl_file
 
-    echo "[!] Do you want to ignore ICMP requests? [y/n]"
-    read q
+    echo -n "[!] Do you want to ignore ICMP requests? [y/n]"
+    read question
 
-    case $q in
+    case $question in
         y|Y)
             echo "[*] Ignoring ICMP requests, at the kernel level."
             echo "net.ipv4.icmp_echo_ignore_all = 1" >>$sysctl_file
@@ -111,7 +111,7 @@ function harden_kernel_stack()
     sysctl -q -p $sysctl_file
 }
 
-function check_if_iface_exists()
+function check_if_iface_exists
 {
     if [ ! -L "/sys/class/net/$1" ]; then
         echo "[!] $1 doesn't exists."
@@ -119,7 +119,7 @@ function check_if_iface_exists()
     fi
 }
 
-function set_ip6tables_fw()
+function set_ip6tables_fw
 {
     echo "[*] Setting ipv6 tables rules"
 
@@ -174,10 +174,10 @@ function set_ip6tables_fw()
     ip6tables -A UDP $1 -p udp -m udp --dport 53 -j ACCEPT
 
     echo "[*] Setting default DROP policy on FORWARD traffic"
-    ip6tables -P FORWARD $1 DROP
+    ip6tables -P FORWARD DROP
 
     echo "[*] Setting default DROP policy on INPUT traffic"
-    ip6tables -P INPUT $1 DROP
+    ip6tables -P INPUT DROP
 
     echo "[*] Saving rules"
     ip6tables-save > /etc/iptables/ip6tables.rules
@@ -188,14 +188,14 @@ function set_ip6tables_fw()
 
 }
 
-function set_iptables_fw()
+function set_iptables_fw
 {
     IFACE_OPT=""
 
     echo "[!] Set iptables rules on all interfaces? [y/n]: "
-    read q
+    read question
 
-    case $q in
+    case $question in
         y|Y)
             ;;
         n|Y)
@@ -204,7 +204,7 @@ function set_iptables_fw()
 
             check_if_iface_exists $IFACE_OPT
 
-            IFACE="-i "$IFACE_OPT
+	    IFACE_OPT="-i "$IFACE_OPT
             ;;
         *)
             echo "[!] Select a valid option."
@@ -278,7 +278,30 @@ function set_iptables_fw()
     set_ip6tables_fw $IFACE_OPT
 }
 
-function harden_file_permissions()
+function harden_xorg
+{
+	if [[ -d "/etc/X11" ]]; then
+		echo "[*] Hardening Xorg"
+		vtswitch_enabled=$(grep -r -E '(Option\s"DontVTSwitch"\s"True")' /etc/X11/)
+
+		if [[ ! $vtswitch_enabled ]]; then
+			xorgsec_file="/etc/X11/xorg.conf.d/10-xorgsec.conf"
+			
+			echo "[*] Setting 'DontVTSwitch' Option"
+			echo -ne "Section \"ServerFlags\"\n" >> $xorgsec_file
+			echo -ne "\tOption \"DontVTSwitch\" \"True\"\n" >> $xorgsec_file
+			
+			zap_enabled=$(grep -r -E 'Option\s"DontZap"\s"True"' /etc/X11)
+			if [[ ! $zap_enabled ]]; then
+				echo "[*] Setting 'DontZap' Option"
+				echo -ne "\tOption \"DontZap\" \"True\"\n" >> $xorgsec_file
+			fi
+			echo -ne "EndSection" >> $xorgsec_file;
+		fi
+	fi
+}
+
+function harden_file_permissions
 {
     echo -ne "\n[*] Hardening file permissions."
     is_proc_mounted=$(grep --only-matching "nosuid,nodev,noexec,hidepid=2,gid=proc" /etc/fstab)
@@ -333,9 +356,11 @@ function harden_file_permissions()
     echo "[*] Protecting grub bootloader config files"
     chown -R root:root /etc/grub.d
     chmod og-rwx -R /etc/grub.d
+
+    harden_xorg
 }
 
-function secure_sshd()
+function secure_sshd
 {
     echo "[*] Setting sshd protocol version 2"
     sed --quiet s'/Protocol \d/Protocol 2/' /etc/ssh/sshd_config
@@ -387,7 +412,7 @@ function secure_sshd()
     for user in ${USERS[*]};
     do
         au_keys_path="/home/$user/.ssh"
-        if [ -d $au_keys_path ] && [ -e "$au_keys_path/authorized_keys" ]; then
+        if [[ -d $au_keys_path && -e "$au_keys_path/authorized_keys" ]]; then
             echo "[*] Settng $au_keys_path/authorized_keys read only"
             chmod 400 "$au_keys_path/authorized_keys"
 
@@ -398,12 +423,12 @@ function secure_sshd()
     done
 }
 
-function restrict_services()
+function restrict_services
 {
-    echo "[!] Mask FTP service? [y/n]: "
-    read q
+    echo -n "[!] Mask FTP service? [y/n]: "
+    read question
 
-    case $q in
+    case $question in
         y|Y)
             echo "[*] Masking FTP service."
             systemctl mask ftpd.service
@@ -412,9 +437,9 @@ function restrict_services()
         ;;
     esac
 
-    echo "[!] Mask rpcbind.service? [y/n]: "
-    read q
-    case $q in
+    echo -n "[!] Mask rpcbind.service? [y/n]: "
+    read question
+    case $question in
         y|Y)
             echo "[*] Masking rpcbind service."
             systemctl mask rpcbind.service
@@ -424,9 +449,9 @@ function restrict_services()
         ;;
     esac
 
-    echo "[!] Mask sshd.service? [y/n]: "
-    read q
-    case $q in
+    echo -n "[!] Mask sshd.service? [y/n]: "
+    read question
+    case $question in
         y|Y)
             echo "[*] Masking ssh service."
             systemctl mask sshd.socket
@@ -439,9 +464,9 @@ function restrict_services()
             ;;
     esac
 
-    echo "[!] Mask talk service? [y/n]: "
-    read q
-    case $q in
+    echo -n "[!] Mask talk service? [y/n]: "
+    read question
+    case $question in
         y|Y)
             echo "[*] Masking talk service."
             systemctl mask ralk.service
@@ -451,9 +476,9 @@ function restrict_services()
         ;;
     esac
 
-    echo "[!] Mask rlogin.service? [y/n]: "
-    read q
-    case $q in
+    echo -n "[!] Mask rlogin.service? [y/n]: "
+    read question
+    case $question in
         y|Y)
             echo "[*] Masking rlogin service."
             systemctl mask rlogin.service
@@ -462,9 +487,9 @@ function restrict_services()
         ;;
     esac
 
-    echo "[!] Mask rsh.service? [y/n]: "
-    read q
-    case $q in
+    echo -n "[!] Mask rsh.service? [y/n]: "
+    read question
+    case $question in
         y|Y)
             echo "[*] Masking rsh service."
             systemctl mask rsh.service
@@ -473,9 +498,9 @@ function restrict_services()
         ;;
     esac
 
-    echo "[!] Mask telnet.service? [y/n]: "
-    read q
-    case $q in
+    echo -n "[!] Mask telnet.service? [y/n]: "
+    read question
+    case $question in
         y|Y)
             echo "[*] Masking telnet service."
             systemctl mask telnet.service
@@ -493,16 +518,32 @@ echo "[*] Locking root."
 passwd -l root
 
 # Based on https://wiki.archlinux.org/index.php/Security#Kernel_hardening
-echo "[*] Hardening TCP/IP stack."
+echo "[*] Hardening Kernel stack."
 harden_kernel_stack
 
 # This firewall rules are based on the ArchLinux wiki simple stateful firewall
 # Link: https://wiki.archlinux.org/index.php/Simple_stateful_firewall
-echo "[*] Setting (ip/nf)tables rules."
-set_iptables_fw
+echo -n "[*] Set new iptables rules [y/n]? "
+read question
+
+case $question in
+	y|Y)
+		echo "[*] Flushing iptables rules."
+		iptables -F
+		
+		echo "[*] Flushing ip6tables rules."
+		ip6tables -F
+		
+		echo "[*] Setting (ip/nf)tables rules."
+		set_iptables_fw
+		;;
+	*)
+	;;
+esac
 
 echo "[*] Masking services."
 restrict_services
 
 echo "[*] Enforcing file permissions"
 harden_file_permissions
+
