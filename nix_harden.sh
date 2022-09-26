@@ -308,7 +308,7 @@ function harden_file_permissions
 
     if [[ ! $is_proc_mounted ]]; then
         echo "[*] Registering procfs with 'nosuid,nodev,noexec,hidepid=2,gid=proc' options"
-        echo -ne "#/proc\nproc\t/proc\tnosuid,nodev,noexec,hidepid=2,gid=proc\t0\t0\n" >> /etc/fstab
+        echo -ne "#/proc\nproc\t/proc\tnosuid,nodev,noexec,hidepid=2,gid=proc\n" >> /etc/fstab
 
         echo "[*] Adding modification to systemd-logind"
         if [ -d "/etc/systemd/system/systemd-logind.service.d/" ]; then
@@ -322,7 +322,7 @@ function harden_file_permissions
 
     if [[ ! $(grep -E "/var/tmp\s{1,}none\s{1,}rw,nodev,nosuid,noexec,bind" /etc/fstab) ]]; then
 	    echo "[*] Binding /tmp mount with /var/tmp"	
-	    echo -ne "n# /tmp -> /var/tmp\n" >> /etc/fstab
+	    echo -ne "# /tmp -> /var/tmp\n" >> /etc/fstab
 	    echo -ne "/tmp\t/var/tmp\tnone\trw,nodev,nosuid,noexec,bind\t0 0\n" >> /etc/fstab;
     fi
 
